@@ -1,34 +1,31 @@
+using System;
 using Microsoft.AspNetCore.Mvc;
 using assignment.Services;
 
 namespace assignment.Controllers
 {
     [ApiController]
-    [Route("api/logs")]
+    [Route("api/[controller]")]
     public class LogsController : ControllerBase
     {
-        private readonly LoggingService _loggingService;
+        private readonly BlockedAttemptLogService _logService;
 
-        public LogsController(LoggingService loggingService)
+        public LogsController(BlockedAttemptLogService logService)
         {
-            _loggingService = loggingService;
+            _logService = logService;
         }
 
         [HttpGet("blocked-attempts")]
-        public IActionResult GetBlockedAttempts([FromQuery] int page = 1,[FromQuery] int pageSize = 10)
+        public IActionResult GetBlockedAttempts([FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
-            if (page < 1) page = 1;
-            if (pageSize < 1) pageSize = 10;
-            if (pageSize > 100) pageSize = 100;
+            if (page < 1)
+                return BadRequest("Page number must be greater than 0");
+            
+            if (pageSize < 1 || pageSize > 100)
+                return BadRequest("Page size must be between 1 and 100");
 
-            var logs = _loggingService.GetLogs()
-                .OrderByDescending(l => l.Timestamp)
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
-                .ToList();
-
-            var totalCount = _loggingService.GetLogs().Count();
-
+            var (logs, totalCount) = _logService.GetLogs(page, pageSize);
+            
             return Ok(new
             {
                 Logs = logs,

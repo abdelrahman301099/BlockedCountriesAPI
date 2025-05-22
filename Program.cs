@@ -17,6 +17,8 @@ namespace assignment
 
             // Register our services
             builder.Services.AddSingleton<BlockedCountriesService>();
+            builder.Services.AddSingleton<BlockedAttemptLogService>();
+            builder.Services.AddHttpClient<IpGeolocationService>();
             builder.Services.AddSingleton<LoggingService>();
             builder.Services.AddHttpClient<GeolocationService>();
 

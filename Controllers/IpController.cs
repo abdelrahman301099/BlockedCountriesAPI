@@ -1,26 +1,30 @@
-using Microsoft.AspNetCore.Mvc;
+using System;
+using System.Net.Http;
+using System.Text.Json;
+using System.Threading.Tasks;
 using assignment.Services;
-using assignment.Models;
-using System.Net;
+using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json.Linq;
+using static System.Net.WebRequestMethods;
 
 namespace assignment.Controllers
 {
     [ApiController]
-    [Route("api/ip")]
+    [Route("api/[controller]")]
     public class IpController : ControllerBase
     {
-        private readonly GeolocationService _geolocationService;
         private readonly BlockedCountriesService _blockedCountriesService;
-        private readonly LoggingService _loggingService;
+        private readonly BlockedAttemptLogService _logService;
+        private readonly IpGeolocationService _ipGeolocationService;
 
         public IpController(
-            GeolocationService geolocationService,
             BlockedCountriesService blockedCountriesService,
-            LoggingService loggingService)
+            BlockedAttemptLogService logService,
+            IpGeolocationService ipGeolocationService)
         {
-            _geolocationService = geolocationService;
             _blockedCountriesService = blockedCountriesService;
-            _loggingService = loggingService;
+            _logService = logService;
+            _ipGeolocationService = ipGeolocationService;
         }
 
         [HttpGet("lookup")]
@@ -28,13 +32,20 @@ namespace assignment.Controllers
         {
             ipAddress ??= HttpContext.Connection.RemoteIpAddress?.ToString();
             
-            if (!_geolocationService.IsValidIpAddress(ipAddress))
+            if (string.IsNullOrEmpty(ipAddress))
+            {
+                return BadRequest("Could not determine IP address");
+            }
+
+            if (!_ipGeolocationService.IsValidIpAddress(ipAddress))
+            {
                 return BadRequest("Invalid IP address format");
+            }
 
             try
             {
-                var result = await _geolocationService.GetIpDetailsAsync(ipAddress);
-                return Ok(result);
+                var ipDetails = await _ipGeolocationService.GetIpDetailsAsync(ipAddress);
+                return Ok(ipDetails);
             }
             catch (Exception ex)
             {
@@ -43,39 +54,42 @@ namespace assignment.Controllers
         }
 
         [HttpGet("check-block")]
-        public async Task<IActionResult> CheckBlock([FromQuery] string ipAddress = null )
+        public async Task<IActionResult> CheckBlock()
         {
-             ipAddress??= HttpContext.Connection.RemoteIpAddress?.ToString();
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString(); // msh sh3'al m3 Localhost
+
+            ipAddress = (ipAddress == "::1" || ipAddress == "127.0.0.1") ? "8.8.8.8" : ipAddress; // ���� �� localhost ����� ipAddress ��� ����
+
+
+            //var ipAddress = HttpContext.Request.Headers["X-Forwarded-For"].FirstOrDefault()
+            //  ?? HttpContext.Connection.RemoteIpAddress?.ToString();
+
+
+
             if (string.IsNullOrEmpty(ipAddress))
+            {
                 return BadRequest("Could not determine IP address");
-
-            try
-            {
-                var ipDetails = await _geolocationService.GetIpDetailsAsync(ipAddress);
-                var isBlocked = _blockedCountriesService.IsCountryBlocked(ipDetails.CountryCode);
-
-                _loggingService.AddLog(new LogEntry
-                {
-                    IpAddress = ipAddress,
-                    CountryCode = ipDetails.CountryCode,
-                    IsBlocked = isBlocked,
-                    Timestamp = DateTime.UtcNow,
-                    RequestPath = HttpContext.Request.Path,
-                    UserAgent = HttpContext.Request.Headers["User-Agent"].ToString()
-                });
-
-                return Ok(new
-                {
-                    IpAddress = ipAddress,
-                    CountryCode = ipDetails.CountryCode,
-                    CountryName = ipDetails.CountryName,
-                    IsBlocked = isBlocked
-                });
             }
-            catch (Exception ex)
+
+            var countryCode = await _ipGeolocationService.GetCountryCodeFromIp(ipAddress);
+            if (string.IsNullOrEmpty(countryCode))
             {
-                return StatusCode(500, $"Failed to check block status: {ex.Message}");
+                return BadRequest("Could not determine country code");
             }
+
+            var isBlocked = _blockedCountriesService.IsCountryBlocked(countryCode);
+            
+            
+            _logService.LogAttempt(
+                ipAddress,
+                countryCode,
+                isBlocked,
+                HttpContext.Request.Headers["User-Agent"].ToString()
+            );
+
+            return Ok(new { IsBlocked = isBlocked, CountryCode = countryCode });
         }
+
+       
     }
 } 

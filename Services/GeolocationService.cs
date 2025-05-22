@@ -17,7 +17,7 @@ namespace assignment.Services
         private readonly string _baseUrl;
         private readonly ILogger<GeolocationService> _logger;
         private readonly SemaphoreSlim _rateLimiter;
-        private const int MaxRequestsPerMinute = 30; // IPGeolocation.io free tier limit
+        private const int MaxRequestsPerMinute = 30; 
 
         public GeolocationService( HttpClient httpClient, IConfiguration configuration,ILogger<GeolocationService> logger)
         {
@@ -27,7 +27,7 @@ namespace assignment.Services
             _logger = logger;
             _rateLimiter = new SemaphoreSlim(1, 1);
 
-            // Configure HttpClient
+
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "BlockedCountriesAPI/1.0");
         }
 
@@ -40,7 +40,7 @@ namespace assignment.Services
             {
                 await _rateLimiter.WaitAsync();
                 var url = $"{_baseUrl}?apiKey={_apiKey}&ip={ipAddress}";
-                
+                Console.WriteLine(url);
                 using var response = await _httpClient.GetAsync(url);
                 
                 if (response.StatusCode == HttpStatusCode.TooManyRequests)
